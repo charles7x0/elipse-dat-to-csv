@@ -39,6 +39,8 @@ export class CsvExporter implements Exporter {
         row[col.name] = value.toISOString();
       } else if (value === null || value === undefined) {
         row[col.name] = '';
+      } else if (typeof value === 'boolean') {
+        row[col.name] = value ? 'true' : 'false';
       } else {
         row[col.name] = value;
       }

@@ -33,7 +33,7 @@ export class ExcelExporter implements Exporter {
       throw new Error('ExcelExporter not initialized. Call initialize() first.');
     }
 
-    const values: (Date | string | number | null)[] = [];
+    const values: (Date | string | number | boolean | null)[] = [];
 
     for (const col of this.columns) {
       const value = record[col.name];

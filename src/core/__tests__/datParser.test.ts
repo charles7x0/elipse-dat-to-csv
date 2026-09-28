@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { validateMagicHeader, decodeColumnValue, parseFile } from '../parsers/datParser';
-import { ColumnType } from '../types';
+import { ColumnType, type DataRecord } from '../types';
 import { InvalidDatFileError, CorruptedFileError } from '../utils/errors';
 import { writeFile, unlink, mkdtemp } from 'fs/promises';
 import { join } from 'path';
@@ -101,6 +101,46 @@ describe('decodeColumnValue', () => {
     expect(result).toBeCloseTo(3.14, 2);
   });
 
+  it('decodes Boolean: non-zero byte is true', () => {
+    const buf = Buffer.from([0x01]);
+    expect(decodeColumnValue(ColumnType.Boolean, buf)).toBe(true);
+  });
+
+  it('decodes Boolean: zero byte is false', () => {
+    const buf = Buffer.from([0x00]);
+    expect(decodeColumnValue(ColumnType.Boolean, buf)).toBe(false);
+  });
+
+  it('decodes Boolean: any non-zero value is true', () => {
+    const buf = Buffer.from([0xff]);
+    expect(decodeColumnValue(ColumnType.Boolean, buf)).toBe(true);
+  });
+
+  it('decodes DWord: reads Int32LE', () => {
+    const buf = Buffer.alloc(4);
+    buf.writeInt32LE(123456, 0);
+    expect(decodeColumnValue(ColumnType.DWord, buf)).toBe(123456);
+  });
+
+  it('decodes DWord: handles negative values', () => {
+    const buf = Buffer.alloc(4);
+    buf.writeInt32LE(-987654, 0);
+    expect(decodeColumnValue(ColumnType.DWord, buf)).toBe(-987654);
+  });
+
+  it('decodes DWordAlt (type 5): reads Int32LE like DWord', () => {
+    const buf = Buffer.alloc(4);
+    buf.writeInt32LE(2000000, 0);
+    expect(decodeColumnValue(ColumnType.DWordAlt, buf)).toBe(2000000);
+  });
+
+  it('decodes Double: reads DoubleLE', () => {
+    const buf = Buffer.alloc(8);
+    buf.writeDoubleLE(3.141592653589793, 0);
+    const result = decodeColumnValue(ColumnType.Double, buf) as number;
+    expect(result).toBeCloseTo(3.141592653589793, 12);
+  });
+
   it('returns null for unknown column type', () => {
     const buf = Buffer.alloc(4);
     expect(decodeColumnValue(99 as ColumnType, buf)).toBeNull();
@@ -122,9 +162,13 @@ function buildDatFile(
   let rowSize = 0;
   for (const col of columns) {
     switch (col.type) {
-      case ColumnType.DateTime: rowSize += 10; break;
+      case ColumnType.Boolean: rowSize += 1; break;
       case ColumnType.Word: rowSize += 2; break;
+      case ColumnType.DWord: rowSize += 4; break;
+      case ColumnType.DWordAlt: rowSize += 4; break;
       case ColumnType.Float: rowSize += 4; break;
+      case ColumnType.Double: rowSize += 8; break;
+      case ColumnType.DateTime: rowSize += 10; break;
       case ColumnType.String: rowSize += col.rawSize; break;
     }
   }
@@ -205,7 +249,7 @@ describe('parseFile', () => {
     const datBuf = buildDatFile(columns, [row1, row2]);
     const filePath = await writeTempDat('test_word_float.dat', datBuf);
 
-    const records = [];
+    const records: DataRecord[] = [];
     for await (const record of parseFile(filePath)) {
       records.push(record);
     }
@@ -229,7 +273,7 @@ describe('parseFile', () => {
     const datBuf = buildDatFile(columns, [row1]);
     const filePath = await writeTempDat('test_datetime.dat', datBuf);
 
-    const records = [];
+    const records: DataRecord[] = [];
     for await (const record of parseFile(filePath)) {
       records.push(record);
     }
@@ -250,13 +294,57 @@ describe('parseFile', () => {
     const datBuf = buildDatFile(columns, [row1]);
     const filePath = await writeTempDat('test_string.dat', datBuf);
 
-    const records = [];
+    const records: DataRecord[] = [];
     for await (const record of parseFile(filePath)) {
       records.push(record);
     }
 
     expect(records).toHaveLength(1);
     expect(records[0]['Tag']).toBe('SensorA');
+  });
+
+  it('yields correct values for Boolean, DWord, DWordAlt, and Double columns', async () => {
+    const columns = [
+      { name: 'Flag', type: ColumnType.Boolean, rawSize: 1 },
+      { name: 'Counter', type: ColumnType.DWord, rawSize: 4 },
+      { name: 'CounterAlt', type: ColumnType.DWordAlt, rawSize: 4 },
+      { name: 'Precise', type: ColumnType.Double, rawSize: 8 },
+    ];
+
+    // rowSize = 1 + 4 + 4 + 8 = 17
+    const row1 = Buffer.alloc(17);
+    let offset = 0;
+    row1.writeUInt8(1, offset); offset += 1; // Flag = true
+    row1.writeInt32LE(100000, offset); offset += 4; // Counter
+    row1.writeInt32LE(-50000, offset); offset += 4; // CounterAlt
+    row1.writeDoubleLE(2.718281828459045, offset); // Precise
+
+    const row2 = Buffer.alloc(17);
+    offset = 0;
+    row2.writeUInt8(0, offset); offset += 1; // Flag = false
+    row2.writeInt32LE(0, offset); offset += 4;
+    row2.writeInt32LE(42, offset); offset += 4;
+    row2.writeDoubleLE(-1.5, offset);
+
+    const datBuf = buildDatFile(columns, [row1, row2]);
+    const filePath = await writeTempDat('test_all_types.dat', datBuf);
+
+    const records: DataRecord[] = [];
+    for await (const record of parseFile(filePath)) {
+      records.push(record);
+    }
+
+    expect(records).toHaveLength(2);
+
+    expect(records[0]['Flag']).toBe(true);
+    expect(records[0]['Counter']).toBe(100000);
+    expect(records[0]['CounterAlt']).toBe(-50000);
+    expect(records[0]['Precise']).toBeCloseTo(2.718281828459045, 12);
+
+    expect(records[1]['Flag']).toBe(false);
+    expect(records[1]['Counter']).toBe(0);
+    expect(records[1]['CounterAlt']).toBe(42);
+    expect(records[1]['Precise']).toBeCloseTo(-1.5, 12);
   });
 
   it('throws InvalidDatFileError for a file with invalid magic header', async () => {
@@ -292,7 +380,7 @@ describe('parseFile', () => {
     const truncatedBuf = Buffer.concat([datBuf, Buffer.from([0x01, 0x02])]);
     const filePath = await writeTempDat('test_truncated.dat', truncatedBuf);
 
-    const records = [];
+    const records: DataRecord[] = [];
     await expect(async () => {
       for await (const record of parseFile(filePath)) {
         records.push(record);
@@ -312,7 +400,7 @@ describe('parseFile', () => {
     const datBuf = buildDatFile(columns, []);
     const filePath = await writeTempDat('test_empty.dat', datBuf);
 
-    const records = [];
+    const records: DataRecord[] = [];
     for await (const record of parseFile(filePath)) {
       records.push(record);
     }
@@ -333,7 +421,7 @@ describe('parseFile', () => {
     const datBuf = buildDatFile(columns, [row]);
     const filePath = await writeTempDat('test_keys.dat', datBuf);
 
-    const records = [];
+    const records: DataRecord[] = [];
     for await (const record of parseFile(filePath)) {
       records.push(record);
     }

@@ -33,7 +33,7 @@ export class JsonExporter implements Exporter {
     }
 
     // Build an ordered object from the columns array
-    const obj: Record<string, string | number | null> = {};
+    const obj: Record<string, string | number | boolean | null> = {};
     for (const col of this.columns) {
       const value = record[col.name];
       if (value instanceof Date) {

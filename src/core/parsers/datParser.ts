@@ -19,8 +19,12 @@ export function validateMagicHeader(buffer: Buffer): boolean {
 }
 
 const VALID_COLUMN_TYPES = new Set<number>([
+  ColumnType.Boolean,
   ColumnType.Word,
+  ColumnType.DWord,
+  ColumnType.DWordAlt,
   ColumnType.Float,
+  ColumnType.Double,
   ColumnType.DateTime,
   ColumnType.String,
 ]);
@@ -35,14 +39,21 @@ const VALID_COLUMN_TYPES = new Set<number>([
  */
 export function computeTypeSize(type: ColumnType, rawSize: number): number {
   switch (type) {
+    case ColumnType.Boolean:
+      return 1;
+    case ColumnType.Word:
+      return 2;
+    case ColumnType.DWord:
+    case ColumnType.DWordAlt:
+      return 4;
+    case ColumnType.Float:
+      return 4;
+    case ColumnType.Double:
+      return 8;
     case ColumnType.DateTime:
       return 10;
     case ColumnType.String:
       return rawSize;
-    case ColumnType.Word:
-      return 2;
-    case ColumnType.Float:
-      return 4;
     default:
       throw new UnsupportedColumnTypeError(`Unknown column type: ${type}`);
   }
@@ -53,10 +64,24 @@ export function computeTypeSize(type: ColumnType, rawSize: number): number {
  *
  * @param type - The column type enum value
  * @param data - Buffer containing the raw column data
- * @returns Decoded value (Date, string, number) or null for unknown types
+ * @returns Decoded value (Date, string, number, boolean) or null for unknown types
  */
-export function decodeColumnValue(type: ColumnType, data: Buffer): Date | string | number | null {
+export function decodeColumnValue(
+  type: ColumnType,
+  data: Buffer,
+): Date | string | number | boolean | null {
   switch (type) {
+    case ColumnType.Boolean:
+      return data[0] !== 0;
+    case ColumnType.Word:
+      return data.readInt16LE(0);
+    case ColumnType.DWord:
+    case ColumnType.DWordAlt:
+      return data.readInt32LE(0);
+    case ColumnType.Float:
+      return data.readFloatLE(0);
+    case ColumnType.Double:
+      return data.readDoubleLE(0);
     case ColumnType.DateTime:
       return new Date(data.readDoubleLE(2) * 1000);
     case ColumnType.String: {
@@ -64,10 +89,6 @@ export function decodeColumnValue(type: ColumnType, data: Buffer): Date | string
       const end = nullIndex === -1 ? data.length : nullIndex;
       return data.subarray(0, end).toString('latin1').trim();
     }
-    case ColumnType.Word:
-      return data.readInt16LE(0);
-    case ColumnType.Float:
-      return data.readFloatLE(0);
     default:
       return null;
   }
