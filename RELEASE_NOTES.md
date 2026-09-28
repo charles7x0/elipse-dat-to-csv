@@ -26,6 +26,31 @@ Booleans are written as `true`/`false` in CSV, and as native booleans in JSON an
 
 - Merge mode buffers rows in memory to sort by timestamp, so it does not use streaming I/O. Per-file conversion remains fully streaming.
 
+### 🛠️ Tech Stack
+
+Electron 33 · React 19 · Mantine 7 · TypeScript 5 · fast-csv · exceljs · vitest
+
+### 🚀 Getting Started
+
+1. Download the installer for your platform from the assets below.
+2. Install and launch the app.
+3. Select or drag your `.dat` files into the window.
+4. Choose your output format. To combine files, tick **Merge into one file** and optionally set a name.
+5. Click **Convert**.
+
+### 🏗️ Build from Source
+
+```bash
+git clone https://github.com/nicedoc/elipse-dat-to-csv.git
+cd elipse-dat-to-csv
+npm ci
+npm run build:win   # or build:linux / build:all
+```
+
+### ⬆️ Upgrading from v1.0.0
+
+No action required — existing workflows are unchanged. Merge mode is opt-in via the new **Merge into one file** setting, and the added column types are handled automatically.
+
 ---
 
 ## v1.0.0 — Initial Release
