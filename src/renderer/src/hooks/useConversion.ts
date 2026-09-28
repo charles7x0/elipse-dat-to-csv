@@ -11,6 +11,10 @@ export interface UseConversionReturn {
   setOutputDirectory: (directory: string) => void
   namingPattern: NamingPattern
   setNamingPattern: (pattern: NamingPattern) => void
+  mergeOutput: boolean
+  setMergeOutput: (merge: boolean) => void
+  mergeFileName: string
+  setMergeFileName: (name: string) => void
   conversionStatus: ConversionStatus
   setConversionStatus: (status: ConversionStatus) => void
   progress: ProgressUpdate | null
@@ -26,6 +30,8 @@ export function useConversion(): UseConversionReturn {
   const [outputFormat, setOutputFormat] = useState<ExportFormat>('csv')
   const [outputDirectory, setOutputDirectory] = useState<string>('')
   const [namingPattern, setNamingPattern] = useState<NamingPattern>('same-name')
+  const [mergeOutput, setMergeOutput] = useState<boolean>(false)
+  const [mergeFileName, setMergeFileName] = useState<string>('merged_output')
   const [conversionStatus, setConversionStatus] = useState<ConversionStatus>('idle')
   const [progress, setProgress] = useState<ProgressUpdate | null>(null)
   const [logs, setLogs] = useState<LogEntry[]>([])
@@ -42,6 +48,10 @@ export function useConversion(): UseConversionReturn {
     setOutputDirectory,
     namingPattern,
     setNamingPattern,
+    mergeOutput,
+    setMergeOutput,
+    mergeFileName,
+    setMergeFileName,
     conversionStatus,
     setConversionStatus,
     progress,

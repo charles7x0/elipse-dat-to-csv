@@ -22,6 +22,10 @@ function App(): React.JSX.Element {
     setOutputDirectory,
     namingPattern,
     setNamingPattern,
+    mergeOutput,
+    setMergeOutput,
+    mergeFileName,
+    setMergeFileName,
     conversionStatus,
     setConversionStatus,
     progress,
@@ -60,6 +64,10 @@ function App(): React.JSX.Element {
             onOutputDirectoryChange={setOutputDirectory}
             namingPattern={namingPattern}
             onNamingPatternChange={setNamingPattern}
+            mergeOutput={mergeOutput}
+            onMergeOutputChange={setMergeOutput}
+            mergeFileName={mergeFileName}
+            onMergeFileNameChange={setMergeFileName}
           />
 
           {/* Convert button + progress */}
@@ -69,6 +77,8 @@ function App(): React.JSX.Element {
             outputFormat={outputFormat}
             outputDirectory={outputDirectory}
             namingPattern={namingPattern}
+            mergeOutput={mergeOutput}
+            mergeFileName={mergeFileName}
             conversionStatus={conversionStatus}
             onConversionStatusChange={setConversionStatus}
             progress={progress}

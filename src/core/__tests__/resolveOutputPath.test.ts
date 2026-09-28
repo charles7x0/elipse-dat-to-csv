@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import path from 'path';
-import { resolveOutputPath } from '../utils/resolveOutputPath';
+import { resolveOutputPath, resolveMergeOutputPath } from '../utils/resolveOutputPath';
 import type { ConversionConfig } from '../types';
 
 function makeConfig(overrides?: Partial<ConversionConfig>): ConversionConfig {
@@ -48,26 +48,44 @@ describe('resolveOutputPath', () => {
     });
   });
 
-  describe('merged-output pattern', () => {
-    it('uses merged_output name with .csv extension', () => {
-      const result = resolveOutputPath('/data/plant_01.dat', makeConfig({ namingPattern: 'merged-output' }));
-      expect(result).toBe(path.join('/tmp/output', 'merged_output.csv'));
+  describe('resolveMergeOutputPath', () => {
+    it('defaults to merged_output with the format extension', () => {
+      expect(resolveMergeOutputPath(makeConfig({ mergeOutput: true }))).toBe(
+        path.join('/tmp/output', 'merged_output.csv'),
+      );
+      expect(resolveMergeOutputPath(makeConfig({ mergeOutput: true, format: 'json' }))).toBe(
+        path.join('/tmp/output', 'merged_output.json'),
+      );
+      expect(resolveMergeOutputPath(makeConfig({ mergeOutput: true, format: 'Excel' }))).toBe(
+        path.join('/tmp/output', 'merged_output.xlsx'),
+      );
     });
 
-    it('uses merged_output name with .json extension', () => {
-      const result = resolveOutputPath('/data/plant_01.dat', makeConfig({ namingPattern: 'merged-output', format: 'json' }));
-      expect(result).toBe(path.join('/tmp/output', 'merged_output.json'));
+    it('uses a custom merge file name', () => {
+      const result = resolveMergeOutputPath(
+        makeConfig({ mergeOutput: true, mergeFileName: 'my_report' }),
+      );
+      expect(result).toBe(path.join('/tmp/output', 'my_report.csv'));
     });
 
-    it('uses merged_output name with .xlsx extension', () => {
-      const result = resolveOutputPath('/data/plant_01.dat', makeConfig({ namingPattern: 'merged-output', format: 'Excel' }));
-      expect(result).toBe(path.join('/tmp/output', 'merged_output.xlsx'));
+    it('strips a trailing extension from the custom name', () => {
+      const result = resolveMergeOutputPath(
+        makeConfig({ mergeOutput: true, mergeFileName: 'my_report.csv', format: 'json' }),
+      );
+      expect(result).toBe(path.join('/tmp/output', 'my_report.json'));
     });
 
-    it('ignores input file name entirely', () => {
-      const r1 = resolveOutputPath('/data/file_a.dat', makeConfig({ namingPattern: 'merged-output' }));
-      const r2 = resolveOutputPath('/data/file_b.dat', makeConfig({ namingPattern: 'merged-output' }));
-      expect(r1).toBe(r2);
+    it('falls back to default for an empty or whitespace name', () => {
+      expect(
+        resolveMergeOutputPath(makeConfig({ mergeOutput: true, mergeFileName: '   ' })),
+      ).toBe(path.join('/tmp/output', 'merged_output.csv'));
+    });
+
+    it('strips directory components to prevent path traversal', () => {
+      const result = resolveMergeOutputPath(
+        makeConfig({ mergeOutput: true, mergeFileName: '../../etc/evil' }),
+      );
+      expect(result).toBe(path.join('/tmp/output', 'evil.csv'));
     });
   });
 

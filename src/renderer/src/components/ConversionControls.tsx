@@ -20,6 +20,8 @@ interface ConversionControlsProps {
   outputFormat: ExportFormat
   outputDirectory: string
   namingPattern: NamingPattern
+  mergeOutput: boolean
+  mergeFileName: string
   conversionStatus: ConversionStatus
   onConversionStatusChange: (status: ConversionStatus) => void
   progress: ProgressUpdate | null
@@ -34,6 +36,8 @@ export function ConversionControls({
   outputFormat,
   outputDirectory,
   namingPattern,
+  mergeOutput,
+  mergeFileName,
   conversionStatus,
   onConversionStatusChange,
   progress,
@@ -67,7 +71,9 @@ export function ConversionControls({
       inputFiles: validFiles.map(f => f.path),
       outputDirectory,
       format: outputFormat,
-      namingPattern
+      namingPattern,
+      mergeOutput,
+      mergeFileName
     }
 
     onConversionStatusChange('converting')
@@ -84,7 +90,7 @@ export function ConversionControls({
         message: `Conversion failed: ${err instanceof Error ? err.message : String(err)}`
       })
     }
-  }, [files, outputDirectory, outputFormat, namingPattern, onFilesChange, onConversionStatusChange, onProgressChange, onLog])
+  }, [files, outputDirectory, outputFormat, namingPattern, mergeOutput, mergeFileName, onFilesChange, onConversionStatusChange, onProgressChange, onLog])
 
   const handleCancel = useCallback(() => {
     window.electronAPI.cancelConversion()

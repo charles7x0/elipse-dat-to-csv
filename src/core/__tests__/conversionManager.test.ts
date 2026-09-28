@@ -3,9 +3,10 @@ import path from 'path';
 import type { ParserRegistry, ExporterRegistry } from '../types';
 import type { ConversionConfig, ProgressUpdate, FileResult, FileError } from '../types';
 
-// Mock convertFile before importing ConversionManager
+// Mock convertFile and mergeFiles before importing ConversionManager
 vi.mock('../converter', () => ({
   convertFile: vi.fn(),
+  mergeFiles: vi.fn(),
 }));
 
 // Mock fs/promises stat
@@ -23,9 +24,10 @@ vi.mock('../utils/fsUtils', async (importOriginal) => {
 });
 
 import { ConversionManager } from '../conversionManager';
-import { convertFile } from '../converter';
+import { convertFile, mergeFiles } from '../converter';
 
 const mockConvertFile = vi.mocked(convertFile);
+const mockMergeFiles = vi.mocked(mergeFiles);
 
 function createMockRegistries(): { parserRegistry: ParserRegistry; exporterRegistry: ExporterRegistry } {
   return {
@@ -227,6 +229,108 @@ describe('ConversionManager', () => {
           exporterRegistry: expect.any(Object),
         }),
       );
+    });
+  });
+
+  describe('merged-output mode', () => {
+    beforeEach(() => {
+      mockMergeFiles.mockResolvedValue({
+        success: true,
+        inputFiles: ['/data/f1.dat', '/data/f2.dat'],
+        outputPath: path.join('/tmp/output', 'merged_output.csv'),
+        rowCount: 5,
+        durationMs: 12,
+      });
+    });
+
+    it('calls mergeFiles once instead of convertFile per file', async () => {
+      const files = ['/data/f1.dat', '/data/f2.dat'];
+      await manager.startBatch(files, createConfig({ mergeOutput: true }));
+
+      expect(mockMergeFiles).toHaveBeenCalledTimes(1);
+      expect(mockConvertFile).not.toHaveBeenCalled();
+    });
+
+    it('passes all input files and the merged output path to mergeFiles', async () => {
+      const files = ['/data/f1.dat', '/data/f2.dat'];
+      await manager.startBatch(files, createConfig({ mergeOutput: true }));
+
+      expect(mockMergeFiles).toHaveBeenCalledWith(
+        files,
+        path.join('/tmp/output', 'merged_output.csv'),
+        'csv',
+        expect.objectContaining({
+          parserRegistry: expect.any(Object),
+          exporterRegistry: expect.any(Object),
+        }),
+      );
+    });
+
+    it('uses a custom merge file name when provided', async () => {
+      await manager.startBatch(
+        ['/data/f1.dat', '/data/f2.dat'],
+        createConfig({ mergeOutput: true, mergeFileName: 'my_report' }),
+      );
+
+      expect(mockMergeFiles).toHaveBeenCalledWith(
+        ['/data/f1.dat', '/data/f2.dat'],
+        path.join('/tmp/output', 'my_report.csv'),
+        'csv',
+        expect.any(Object),
+      );
+    });
+
+    it('returns a BatchResult with a single merged entry on success', async () => {
+      const files = ['/data/f1.dat', '/data/f2.dat'];
+      const result = await manager.startBatch(
+        files,
+        createConfig({ mergeOutput: true }),
+      );
+
+      expect(result.totalFiles).toBe(2);
+      expect(result.successCount).toBe(1);
+      expect(result.failureCount).toBe(0);
+      expect(result.totalRows).toBe(5);
+      expect(result.results).toHaveLength(1);
+      expect(result.results[0].outputPath).toBe(path.join('/tmp/output', 'merged_output.csv'));
+    });
+
+    it('emits fileComplete on successful merge', async () => {
+      const completeEvents: FileResult[] = [];
+      manager.on('fileComplete', (r) => completeEvents.push(r));
+
+      await manager.startBatch(
+        ['/data/f1.dat', '/data/f2.dat'],
+        createConfig({ mergeOutput: true }),
+      );
+
+      expect(completeEvents).toHaveLength(1);
+      expect(completeEvents[0].success).toBe(true);
+      expect(completeEvents[0].rowCount).toBe(5);
+    });
+
+    it('emits error and reports failure when merge fails', async () => {
+      mockMergeFiles.mockResolvedValueOnce({
+        success: false,
+        inputFiles: ['/data/f1.dat', '/data/f2.dat'],
+        outputPath: path.join('/tmp/output', 'merged_output.csv'),
+        rowCount: 0,
+        durationMs: 3,
+        error: 'Cannot merge "f2.dat": column count differs (expected 2, got 3).',
+      });
+
+      const errorEvents: FileError[] = [];
+      manager.on('error', (e) => errorEvents.push(e));
+
+      const result = await manager.startBatch(
+        ['/data/f1.dat', '/data/f2.dat'],
+        createConfig({ mergeOutput: true }),
+      );
+
+      expect(result.successCount).toBe(0);
+      expect(result.failureCount).toBe(1);
+      expect(errorEvents).toHaveLength(1);
+      expect(errorEvents[0].error).toContain('Cannot merge');
     });
   });
 

@@ -1,3 +1,7 @@
 export * from './errors';
 export { wrapFsError, validateOutputDirectory } from './fsUtils';
-export { resolveOutputPath } from './resolveOutputPath';
+export {
+  resolveOutputPath,
+  resolveMergeOutputPath,
+  DEFAULT_MERGE_FILE_NAME,
+} from './resolveOutputPath';

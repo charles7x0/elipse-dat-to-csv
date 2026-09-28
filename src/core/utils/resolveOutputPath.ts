@@ -15,13 +15,29 @@ function getExtension(format: ExportFormat): string {
   }
 }
 
+/** Default base name for the merged output file when none is provided. */
+export const DEFAULT_MERGE_FILE_NAME = 'merged_output';
+
 /**
- * Resolves the output file path based on input path and conversion config.
+ * Sanitizes a user-provided merge file name: strips any directory components
+ * and a trailing extension, and falls back to the default if empty.
+ */
+function sanitizeMergeBaseName(name: string | undefined): string {
+  if (!name) {
+    return DEFAULT_MERGE_FILE_NAME;
+  }
+  // Strip directory separators to prevent path traversal, then drop any extension
+  const base = path.basename(name.trim());
+  const withoutExt = base.replace(/\.[^.]+$/, '');
+  return withoutExt.length > 0 ? withoutExt : DEFAULT_MERGE_FILE_NAME;
+}
+
+/**
+ * Resolves the per-file output path based on input path and conversion config.
  *
  * Naming patterns:
  * - `same-name`: output has same base name as input with new extension
  * - `tag-separated`: output has base name suffixed with `_tags`
- * - `merged-output`: all inputs map to a single `merged_output` file
  *
  * @param inputPath - Path to the input .dat file
  * @param config - Conversion configuration with outputDirectory, format, and namingPattern
@@ -36,7 +52,18 @@ export function resolveOutputPath(inputPath: string, config: ConversionConfig): 
       return path.join(config.outputDirectory, `${baseName}${ext}`);
     case 'tag-separated':
       return path.join(config.outputDirectory, `${baseName}_tags${ext}`);
-    case 'merged-output':
-      return path.join(config.outputDirectory, `merged_output${ext}`);
   }
+}
+
+/**
+ * Resolves the single output path for merge mode, using `config.mergeFileName`
+ * (sanitized, without extension) or the default `merged_output`.
+ *
+ * @param config - Conversion configuration with outputDirectory, format, and optional mergeFileName
+ * @returns Full merged output file path
+ */
+export function resolveMergeOutputPath(config: ConversionConfig): string {
+  const ext = getExtension(config.format);
+  const baseName = sanitizeMergeBaseName(config.mergeFileName);
+  return path.join(config.outputDirectory, `${baseName}${ext}`);
 }

@@ -9,8 +9,8 @@ import type {
   FileResult,
   FileError,
 } from './types';
-import { convertFile } from './converter';
-import { resolveOutputPath } from './utils';
+import { convertFile, mergeFiles } from './converter';
+import { resolveOutputPath, resolveMergeOutputPath } from './utils';
 import { validateOutputDirectory } from './utils';
 
 /**
@@ -38,6 +38,12 @@ export class ConversionManager extends EventEmitter {
 
     // Validate output directory is writable before starting conversion
     await validateOutputDirectory(config.outputDirectory);
+
+    // Merge mode: concatenate all files into a single output,
+    // sorted chronologically. Handled separately from per-file conversion.
+    if (config.mergeOutput) {
+      return this.runMerge(files, config);
+    }
 
     const results: FileResult[] = [];
     let successCount = 0;
@@ -95,6 +101,60 @@ export class ConversionManager extends EventEmitter {
       totalRows: results.reduce((sum, r) => sum + r.rowCount, 0),
       totalDurationMs: results.reduce((sum, r) => sum + r.durationMs, 0),
       results,
+    };
+  }
+
+  /**
+   * Merges all input files into a single output, sorted by timestamp.
+   * Emits a single 'progress' event, then 'fileComplete' or 'error'.
+   * Returns a BatchResult where the merged output is represented as one entry.
+   */
+  private async runMerge(files: string[], config: ConversionConfig): Promise<BatchResult> {
+    const outputPath = resolveMergeOutputPath(config);
+    const startTime = Date.now();
+
+    this.emit('progress', {
+      currentFileIndex: 0,
+      totalFiles: files.length,
+      currentFileName: path.basename(outputPath),
+      bytesProcessed: 0,
+      totalBytes: 0,
+      rowsProcessed: 0,
+      status: 'processing',
+    } satisfies ProgressUpdate);
+
+    const merge = await mergeFiles(files, outputPath, config.format, {
+      parserRegistry: this.parserRegistry,
+      exporterRegistry: this.exporterRegistry,
+    });
+
+    const durationMs = Date.now() - startTime;
+
+    const result: FileResult = {
+      filePath: merge.inputFiles.join(', '),
+      success: merge.success,
+      rowCount: merge.rowCount,
+      outputPath: merge.outputPath,
+      durationMs,
+      error: merge.error,
+    };
+
+    if (merge.success) {
+      this.emit('fileComplete', result);
+    } else {
+      this.emit('error', {
+        filePath: result.filePath,
+        error: merge.error ?? 'Unknown error',
+      } satisfies FileError);
+    }
+
+    return {
+      totalFiles: files.length,
+      successCount: merge.success ? 1 : 0,
+      failureCount: merge.success ? 0 : 1,
+      totalRows: merge.rowCount,
+      totalDurationMs: durationMs,
+      results: [result],
     };
   }
 

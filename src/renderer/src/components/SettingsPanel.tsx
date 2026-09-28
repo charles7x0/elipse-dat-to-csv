@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { Button, Group, Text, Select } from '@mantine/core'
+import { Button, Group, Text, Select, Checkbox, TextInput } from '@mantine/core'
 import type { ExportFormat, NamingPattern } from '../../../core/types'
 
 interface SettingsPanelProps {
@@ -9,6 +9,10 @@ interface SettingsPanelProps {
   onOutputDirectoryChange: (directory: string) => void
   namingPattern: NamingPattern
   onNamingPatternChange: (pattern: NamingPattern) => void
+  mergeOutput: boolean
+  onMergeOutputChange: (merge: boolean) => void
+  mergeFileName: string
+  onMergeFileNameChange: (name: string) => void
 }
 
 const FORMAT_OPTIONS = [
@@ -19,8 +23,7 @@ const FORMAT_OPTIONS = [
 
 const NAMING_OPTIONS = [
   { value: 'same-name', label: 'Same name' },
-  { value: 'tag-separated', label: 'Tag separated' },
-  { value: 'merged-output', label: 'Merged' }
+  { value: 'tag-separated', label: 'Tag separated' }
 ]
 
 export function SettingsPanel({
@@ -29,7 +32,11 @@ export function SettingsPanel({
   outputDirectory,
   onOutputDirectoryChange,
   namingPattern,
-  onNamingPatternChange
+  onNamingPatternChange,
+  mergeOutput,
+  onMergeOutputChange,
+  mergeFileName,
+  onMergeFileNameChange
 }: SettingsPanelProps): React.JSX.Element {
   const handleSelectOutputFolder = useCallback(async () => {
     const folder = await window.electronAPI.selectOutputFolder()
@@ -60,8 +67,26 @@ export function SettingsPanel({
         value={namingPattern}
         onChange={(v) => { if (v) onNamingPatternChange(v as NamingPattern) }}
         allowDeselect={false}
+        disabled={mergeOutput}
         style={{ width: 140 }}
       />
+      <Checkbox
+        size="xs"
+        label="Merge into one file"
+        checked={mergeOutput}
+        onChange={(e) => onMergeOutputChange(e.currentTarget.checked)}
+        style={{ alignSelf: 'center' }}
+      />
+      {mergeOutput && (
+        <TextInput
+          size="xs"
+          label="Merged file name"
+          placeholder="merged_output"
+          value={mergeFileName}
+          onChange={(e) => onMergeFileNameChange(e.currentTarget.value)}
+          style={{ width: 160 }}
+        />
+      )}
     </Group>
   )
 }
