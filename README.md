@@ -43,6 +43,7 @@ Check out the [Getting Started](#getting-started) section for full instructions.
 
 - **Multiple export formats** — CSV (RFC 4180), Excel (.xlsx), and JSON
 - **Batch conversion** — process multiple files sequentially with progress tracking
+- **Merge mode** — concatenate many `.dat` files into one output, sorted chronologically, with a configurable file name
 - **Drag and drop** — drop `.dat` files or folders directly into the app
 - **Folder discovery** — recursively finds all `.dat` files in a selected folder
 - **File validation** — checks the magic header (`0xa7eda5db`) before conversion
@@ -55,6 +56,7 @@ Check out the [Getting Started](#getting-started) section for full instructions.
 - [Getting Started](#getting-started)
 - [Supported Column Types](#supported-column-types)
 - [Output Naming Patterns](#output-naming-patterns)
+- [Merge Mode](#merge-mode)
 - [Project Structure](#project-structure)
 - [Tech Stack](#tech-stack)
 - [Development](#development)
@@ -63,20 +65,38 @@ Check out the [Getting Started](#getting-started) section for full instructions.
 
 ## Supported Column Types
 
-| Type     | Code | Decoding                            |
-|----------|------|-------------------------------------|
-| DateTime | 8    | DoubleLE at offset+2, ×1000 → Date |
-| String   | 9    | Latin1, null-terminated, trimmed    |
-| Word     | 3    | Int16LE                             |
-| Float    | 6    | FloatLE                             |
+| Type     | Code | Size (bytes) | Decoding                                        |
+|----------|------|--------------|-------------------------------------------------|
+| Boolean  | 2    | 1            | Non-zero byte → `true`                          |
+| Word     | 3    | 2            | Int16LE                                         |
+| DWord    | 4    | 4            | Int32LE                                         |
+| DWord    | 5    | 4            | Int32LE (alternate code, same decoding)         |
+| Float    | 6    | 4            | FloatLE                                         |
+| Double   | 7    | 8            | DoubleLE                                        |
+| DateTime | 8    | 10           | DoubleLE epoch seconds at offset+2, ×1000 → Date |
+| String   | 9    | variable     | Latin1, null-terminated, trimmed                |
+
+Booleans are written as `true`/`false` in CSV output, and as native booleans in JSON and Excel.
 
 ## Output Naming Patterns
+
+Naming patterns apply in the default one-output-per-input mode. To combine files instead, see [Merge Mode](#merge-mode).
 
 | Pattern        | Example                              |
 |----------------|--------------------------------------|
 | same-name      | `plant_01.dat` → `plant_01.csv`      |
 | tag-separated  | `plant_01.dat` → `plant_01_tags.csv` |
-| merged-output  | All files → `merged_output.csv`      |
+
+## Merge Mode
+
+Enable **Merge into one file** in the settings to concatenate all selected `.dat` files into a single output instead of producing one file per input.
+
+- **Single output** — every input's rows are written to one file. The name defaults to `merged_output` and is configurable via the **Merged file name** field (the extension is added automatically from the chosen format).
+- **Chronological order** — rows are sorted ascending by the first `DateTime` column. Files with no `DateTime` column keep their read order.
+- **Identical columns required** — all merged files must share the same columns (name, type, and order). If any file differs, the merge stops with an error describing the mismatch.
+
+> [!NOTE]
+> Merge mode buffers all rows in memory to sort them by timestamp, so it does not use streaming I/O. Per-file conversion remains fully streaming. For very large merged datasets, watch memory usage.
 
 ## Getting Started
 
@@ -186,7 +206,7 @@ If you want to run the latest code from git, here's how to get started:
 1. Clone the code:
 
     ```bash
-    git clone https://github.com/nicedoc/elipse-dat-to-csv.git
+    git clone https://github.com/charles7x0/elipse-dat-to-csv.git
     cd elipse-dat-to-csv
     ```
 
@@ -214,18 +234,18 @@ Elipse DAT to CSV Converter is licensed under the [MIT License](LICENSE).
 
 <!-- Badge images -->
 [badge-license]: https://img.shields.io/badge/License-MIT-blue.svg?color=3F51B5&style=for-the-badge&label=License&logoColor=000000&labelColor=ececec
-[badge-build]: https://img.shields.io/github/actions/workflow/status/nicedoc/elipse-dat-to-csv/ci.yml?branch=main&label=Build%20Status&style=for-the-badge
+[badge-build]: https://img.shields.io/github/actions/workflow/status/charles7x0/elipse-dat-to-csv/ci.yml?branch=main&label=Build%20Status&style=for-the-badge
 [badge-electron]: https://img.shields.io/badge/Electron-33-47848F.svg?style=for-the-badge&logo=electron&logoColor=47848F&labelColor=ececec
 [badge-react]: https://img.shields.io/badge/React-19-61DAFB.svg?style=for-the-badge&logo=react&logoColor=61DAFB&labelColor=ececec
 [badge-typescript]: https://img.shields.io/badge/TypeScript-5-3178C6.svg?style=for-the-badge&logo=typescript&logoColor=3178C6&labelColor=ececec
-[badge-issues]: https://img.shields.io/github/issues/nicedoc/elipse-dat-to-csv?style=for-the-badge&labelColor=ececec
-[badge-stars]: https://img.shields.io/github/stars/nicedoc/elipse-dat-to-csv?style=for-the-badge&labelColor=ececec
+[badge-issues]: https://img.shields.io/github/issues/charles7x0/elipse-dat-to-csv?style=for-the-badge&labelColor=ececec
+[badge-stars]: https://img.shields.io/github/stars/charles7x0/elipse-dat-to-csv?style=for-the-badge&labelColor=ececec
 
 <!-- Badge links -->
 [link-license]: https://opensource.org/licenses/MIT
-[link-build]: https://github.com/nicedoc/elipse-dat-to-csv/actions?query=branch%3Amain
+[link-build]: https://github.com/charles7x0/elipse-dat-to-csv/actions?query=branch%3Amain
 [link-electron]: https://www.electronjs.org/
 [link-react]: https://react.dev/
 [link-typescript]: https://www.typescriptlang.org/
-[link-issues]: https://github.com/nicedoc/elipse-dat-to-csv/issues
-[link-stars]: https://github.com/nicedoc/elipse-dat-to-csv/stargazers
+[link-issues]: https://github.com/charles7x0/elipse-dat-to-csv/issues
+[link-stars]: https://github.com/charles7x0/elipse-dat-to-csv/stargazers
