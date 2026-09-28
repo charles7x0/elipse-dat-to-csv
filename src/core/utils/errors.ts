@@ -37,3 +37,14 @@ export class DiskSpaceError extends Error {
     this.name = 'DiskSpaceError';
   }
 }
+
+/**
+ * Thrown when merging multiple .dat files whose column definitions do not match.
+ * Merge requires all files to share identical columns (name, type, and order).
+ */
+export class MergeMismatchError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MergeMismatchError';
+  }
+}
