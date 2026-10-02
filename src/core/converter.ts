@@ -4,7 +4,7 @@ import type { ParserRegistry, ExporterRegistry, ConvertOptions } from './types';
 import type { ExportFormat, FileResult, ColumnHeader, DataRecord } from './types';
 import { ColumnType } from './types';
 import { parseHeader } from './parsers';
-import { wrapFsError, MergeMismatchError } from './utils';
+import { wrapFsError } from './utils';
 
 /**
  * Reads the .dat file header and extracts column definitions.
@@ -119,29 +119,25 @@ export async function convertFile(
 }
 
 /**
- * Compares two column lists for merge compatibility.
- * Columns must match in count, name, type, and order.
- *
- * @returns null if compatible, or a human-readable reason describing the mismatch
+ * Builds the union of column definitions across multiple files, preserving
+ * first-seen order. Files may legitimately have different columns (different
+ * tags, PLCs, or record layouts); the merged output contains every column that
+ * appears in any file. When the same column name appears in more than one file,
+ * the first-seen definition wins (name/type are only used for headers and Excel
+ * cell typing — values are decoded per file at parse time).
  */
-function describeColumnMismatch(
-  reference: ColumnHeader[],
-  candidate: ColumnHeader[],
-): string | null {
-  if (reference.length !== candidate.length) {
-    return `column count differs (expected ${reference.length}, got ${candidate.length})`;
-  }
-  for (let i = 0; i < reference.length; i++) {
-    const a = reference[i];
-    const b = candidate[i];
-    if (a.name !== b.name) {
-      return `column ${i} name differs (expected "${a.name}", got "${b.name}")`;
-    }
-    if (a.type !== b.type) {
-      return `column "${a.name}" type differs (expected ${a.type}, got ${b.type})`;
+function unionColumns(columnLists: ColumnHeader[][]): ColumnHeader[] {
+  const merged: ColumnHeader[] = [];
+  const seen = new Set<string>();
+  for (const columns of columnLists) {
+    for (const col of columns) {
+      if (!seen.has(col.name)) {
+        seen.add(col.name);
+        merged.push(col);
+      }
     }
   }
-  return null;
+  return merged;
 }
 
 /**
@@ -194,18 +190,14 @@ export async function mergeFiles(
       throw new Error('No input files provided for merge');
     }
 
-    // Read and validate columns across all files (option c: identical headers)
-    const referenceColumns = await readColumns(inputPaths[0]);
-    for (let i = 1; i < inputPaths.length; i++) {
-      const columns = await readColumns(inputPaths[i]);
-      const mismatch = describeColumnMismatch(referenceColumns, columns);
-      if (mismatch) {
-        throw new MergeMismatchError(
-          `Cannot merge "${path.basename(inputPaths[i])}": ${mismatch}. ` +
-            `All files must have identical columns to merge.`,
-        );
-      }
+    // Read columns from every file. Files may have different columns (different
+    // tags/PLCs/layouts); the merged output uses the union of all columns, so a
+    // mismatch is no longer an error.
+    const perFileColumns: ColumnHeader[][] = [];
+    for (const inputPath of inputPaths) {
+      perFileColumns.push(await readColumns(inputPath));
     }
+    const mergedColumns = unionColumns(perFileColumns);
 
     const parser = options.parserRegistry.getParser(inputPaths[0]);
     if (!parser) {
@@ -222,7 +214,7 @@ export async function mergeFiles(
     }
 
     // Sort ascending by the DateTime column, if one exists
-    const dateColumn = findDateTimeColumn(referenceColumns);
+    const dateColumn = findDateTimeColumn(mergedColumns);
     if (dateColumn) {
       allRecords.sort((a, b) => {
         const av = a[dateColumn];
@@ -235,7 +227,7 @@ export async function mergeFiles(
 
     // Write once through the exporter
     const exporter = options.exporterRegistry.get(format);
-    await exporter.initialize(outputPath, referenceColumns);
+    await exporter.initialize(outputPath, mergedColumns);
 
     let rowCount = 0;
     try {

@@ -146,11 +146,11 @@ describe('mergeFiles', () => {
     expect(values).toEqual([10, 50, 70, 90]); // chronological by timestamp
   });
 
-  it('fails with a mismatch error when column counts differ', async () => {
+  it('merges files with different columns using the union of all columns', async () => {
     const f1 = await writeDat('a.dat', [buildDateWordRow(1000, 1)]);
 
     // f2 has an extra String column
-    const mismatchedColumns = [
+    const extendedColumns = [
       ...DATE_WORD_COLUMNS,
       { name: 'Extra', type: ColumnType.String, rawSize: 8 },
     ];
@@ -159,21 +159,30 @@ describe('mergeFiles', () => {
     row.writeInt16LE(2, 10);
     row.write('hi', 12, 'latin1');
     const f2 = path.join(tmpDir, 'b.dat');
-    await writeFile(f2, buildDatFile(mismatchedColumns, [row]));
+    await writeFile(f2, buildDatFile(extendedColumns, [row]));
 
     const outputPath = path.join(tmpDir, 'merged_output.csv');
     const result = await mergeFiles([f1, f2], outputPath, 'csv', options);
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('Cannot merge');
-    expect(result.error).toContain('column count differs');
+    expect(result.success).toBe(true);
+    expect(result.rowCount).toBe(2);
+
+    const csv = await readFile(outputPath, 'utf8');
+    const lines = csv.trim().split('\n');
+    // Header is the union: DateTime, Value, Extra
+    expect(lines[0]).toBe('DateTime,Value,Extra');
+    expect(lines).toHaveLength(3); // header + 2 rows
+    // Row from f1 (no Extra) leaves the Extra cell blank
+    expect(lines[1].endsWith(',1,')).toBe(true);
+    // Row from f2 fills Extra
+    expect(lines[2].endsWith(',2,hi')).toBe(true);
   });
 
-  it('fails with a mismatch error when a column type differs', async () => {
+  it('merges files that share a column name with differing types (first type wins in header)', async () => {
     const f1 = await writeDat('a.dat', [buildDateWordRow(1000, 1)]);
 
     // Same names/order but second column is Float instead of Word
-    const typeMismatch = [
+    const typeVariant = [
       { name: 'DateTime', type: ColumnType.DateTime, rawSize: 10 },
       { name: 'Value', type: ColumnType.Float, rawSize: 4 },
     ];
@@ -181,13 +190,17 @@ describe('mergeFiles', () => {
     row.writeDoubleLE(2000, 2);
     row.writeFloatLE(1.5, 10);
     const f2 = path.join(tmpDir, 'b.dat');
-    await writeFile(f2, buildDatFile(typeMismatch, [row]));
+    await writeFile(f2, buildDatFile(typeVariant, [row]));
 
-    const outputPath = path.join(tmpDir, 'merged_output.csv');
-    const result = await mergeFiles([f1, f2], outputPath, 'csv', options);
+    const outputPath = path.join(tmpDir, 'merged_output.json');
+    const result = await mergeFiles([f1, f2], outputPath, 'json', options);
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('type differs');
+    expect(result.success).toBe(true);
+    expect(result.rowCount).toBe(2);
+
+    const parsed = JSON.parse(await readFile(outputPath, 'utf8')) as { Value: number }[];
+    // Both files contribute a Value; sorted chronologically (1000 then 2000)
+    expect(parsed.map((r) => r.Value)).toEqual([1, 1.5]);
   });
 
   it('returns failure when no input files are provided', async () => {

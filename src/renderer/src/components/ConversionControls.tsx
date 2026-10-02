@@ -149,6 +149,26 @@ export function ConversionControls({
     const unsubComplete = window.electronAPI.onConversionComplete((result: BatchResult) => {
       const status: ConversionStatus = result.failureCount === result.totalFiles ? 'error' : 'complete'
       onConversionStatusChange(status)
+
+      // Reconcile any file rows still left unresolved. In merge mode the manager
+      // emits a single fileComplete/error whose filePath is the joined list of
+      // every input, so per-row path matching never fires and all rows stay
+      // 'pending'. Resolve them here from the overall batch outcome: a merge is
+      // all-or-nothing, so every participating file shares the same result.
+      const mergeSucceeded = result.failureCount === 0
+      const mergeError = result.results.find(r => !r.success)?.error
+      onFilesChange(prev =>
+        prev.map(f => {
+          if (!f.valid) return f
+          if (f.conversionStatus === 'pending' || f.conversionStatus === 'converting') {
+            return mergeSucceeded
+              ? { ...f, conversionStatus: 'success' as const }
+              : { ...f, conversionStatus: 'error' as const, conversionError: mergeError }
+          }
+          return f
+        })
+      )
+
       onConversionComplete(result)
       onLog({
         timestamp: new Date(),
