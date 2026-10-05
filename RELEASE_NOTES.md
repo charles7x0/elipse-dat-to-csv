@@ -1,3 +1,25 @@
+## v1.1.1 — Merge Fixes
+
+Fixes three issues in merge mode discovered with real-world historian exports.
+
+### 🐛 Fixes
+
+- **Merge files with different columns** — merge mode no longer requires every file to share identical columns. The merged output now uses the union of all columns across the selected files (first-seen order); cells a file doesn't have are left blank. Combining different tags/PLCs (e.g. `tca` and `tvz` files) now works instead of failing with a column-mismatch error.
+- **Live progress during merge** — the progress bar now advances throughout a merge: per file as each is read, and periodically as rows are written. Previously it showed a single update and appeared frozen on large merges.
+- **Readable Excel timestamps** — DateTime values in `.xlsx` output are written as full `YYYY-MM-DD HH:mm:ss` text, matching CSV/JSON. Previously Excel rendered them with a locale-ambiguous `mm-dd-yy` format that hid the time-of-day entirely.
+- Per-file rows in the list now resolve to their final status (success/error) after a merge instead of staying stuck on **PENDING**.
+
+### ⚙️ Notes
+
+- Excel DateTime cells are now text rather than native Excel date values, so the complete timestamp is always visible. This is a deliberate workaround for a limitation in the streaming `.xlsx` writer and keeps Excel output consistent with CSV and JSON.
+- Merge still buffers rows in memory to sort by timestamp; per-file conversion remains fully streaming.
+
+### ⬆️ Upgrading from v1.1.0
+
+No action required. Existing workflows are unchanged; the fixes apply automatically.
+
+---
+
 ## v1.1.0 — Merge Mode & More Column Types
 
 Adds a merge mode for combining files and expands column type support.
