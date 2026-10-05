@@ -26,6 +26,15 @@ export class ConversionManager extends EventEmitter {
     super();
     this.parserRegistry = parserRegistry;
     this.exporterRegistry = exporterRegistry;
+
+    // Node's EventEmitter throws if an 'error' event is emitted with no listener
+    // attached. A failed file/merge is a normal, recoverable outcome that is
+    // already captured in the returned BatchResult, so a caller that does not
+    // subscribe to 'error' must not crash. This no-op guarantees at least one
+    // listener; real subscribers still receive the event alongside it.
+    this.on('error', () => {
+      /* swallow: failures are reported via the returned BatchResult */
+    });
   }
 
   /**
@@ -106,27 +115,52 @@ export class ConversionManager extends EventEmitter {
 
   /**
    * Merges all input files into a single output, sorted by timestamp.
-   * Emits a single 'progress' event, then 'fileComplete' or 'error'.
+   * Emits live 'progress' events as files are read and rows are written,
+   * then 'fileComplete' or 'error'.
    * Returns a BatchResult where the merged output is represented as one entry.
    */
   private async runMerge(files: string[], config: ConversionConfig): Promise<BatchResult> {
     const outputPath = resolveMergeOutputPath(config);
     const startTime = Date.now();
 
+    // Initial event so the UI shows activity immediately.
     this.emit('progress', {
       currentFileIndex: 0,
       totalFiles: files.length,
-      currentFileName: path.basename(outputPath),
+      currentFileName: path.basename(files[0] ?? outputPath),
       bytesProcessed: 0,
       totalBytes: 0,
       rowsProcessed: 0,
       status: 'processing',
     } satisfies ProgressUpdate);
 
-    const merge = await mergeFiles(files, outputPath, config.format, {
-      parserRegistry: this.parserRegistry,
-      exporterRegistry: this.exporterRegistry,
-    });
+    const merge = await mergeFiles(
+      files,
+      outputPath,
+      config.format,
+      {
+        parserRegistry: this.parserRegistry,
+        exporterRegistry: this.exporterRegistry,
+      },
+      (p) => {
+        // Translate merge-phase progress into the UI's ProgressUpdate shape.
+        // Reading phase advances currentFileIndex per file; writing phase holds
+        // the index at the last file and reports rows written.
+        this.emit('progress', {
+          currentFileIndex:
+            p.phase === 'reading' ? (p.fileIndex ?? 0) : Math.max(0, files.length - 1),
+          totalFiles: files.length,
+          currentFileName:
+            p.phase === 'reading'
+              ? (p.fileName ?? path.basename(outputPath))
+              : path.basename(outputPath),
+          bytesProcessed: 0,
+          totalBytes: 0,
+          rowsProcessed: p.rowsProcessed,
+          status: 'processing',
+        } satisfies ProgressUpdate);
+      },
+    );
 
     const durationMs = Date.now() - startTime;
 

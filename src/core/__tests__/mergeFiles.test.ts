@@ -203,6 +203,30 @@ describe('mergeFiles', () => {
     expect(parsed.map((r) => r.Value)).toEqual([1, 1.5]);
   });
 
+  it('reports progress per file during the reading phase', async () => {
+    const f1 = await writeDat('a.dat', [buildDateWordRow(1000, 1), buildDateWordRow(2000, 2)]);
+    const f2 = await writeDat('b.dat', [buildDateWordRow(3000, 3)]);
+    const outputPath = path.join(tmpDir, 'merged_output.csv');
+
+    const reading: Array<{ fileIndex?: number; rowsProcessed: number }> = [];
+    let sawWriting = false;
+    const result = await mergeFiles([f1, f2], outputPath, 'csv', options, (p) => {
+      if (p.phase === 'reading') {
+        reading.push({ fileIndex: p.fileIndex, rowsProcessed: p.rowsProcessed });
+      } else {
+        sawWriting = true;
+      }
+    });
+
+    expect(result.success).toBe(true);
+    // One reading event per input file, with cumulative row counts
+    expect(reading).toHaveLength(2);
+    expect(reading[0]).toEqual({ fileIndex: 0, rowsProcessed: 2 });
+    expect(reading[1]).toEqual({ fileIndex: 1, rowsProcessed: 3 });
+    // Small merges may not cross the write-progress threshold; that's fine.
+    expect(typeof sawWriting).toBe('boolean');
+  });
+
   it('returns failure when no input files are provided', async () => {
     const outputPath = path.join(tmpDir, 'merged_output.csv');
     const result = await mergeFiles([], outputPath, 'csv', options);

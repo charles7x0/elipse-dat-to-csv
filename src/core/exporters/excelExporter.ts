@@ -1,6 +1,25 @@
 import ExcelJS from 'exceljs';
 import type { Exporter } from '../types';
 import type { ColumnHeader, DataRecord, ExportFormat } from '../types';
+import { ColumnType } from '../types';
+
+/**
+ * Formats a Date as a readable, unambiguous `YYYY-MM-DD HH:mm:ss` string using
+ * UTC components (the same instant the CSV/JSON exporters emit via toISOString).
+ *
+ * We write DateTime values as strings rather than native Excel dates on purpose:
+ * the exceljs 4.x streaming writer stamps every Date cell with its default
+ * `mm-dd-yy` number format and ignores any column- or cell-level numFmt we set,
+ * so native dates render with a locale-ambiguous date and no time-of-day at all.
+ * A pre-formatted string displays correctly everywhere and matches CSV/JSON.
+ */
+function formatDateTime(d: Date): string {
+  const pad = (n: number, len = 2): string => String(n).padStart(len, '0');
+  return (
+    `${pad(d.getUTCFullYear(), 4)}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
+    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+  );
+}
 
 /**
  * Excel exporter — writes .xlsx files using exceljs streaming workbook writer.
@@ -33,13 +52,14 @@ export class ExcelExporter implements Exporter {
       throw new Error('ExcelExporter not initialized. Call initialize() first.');
     }
 
-    const values: (Date | string | number | boolean | null)[] = [];
+    const values: (string | number | boolean | null)[] = [];
 
     for (const col of this.columns) {
       const value = record[col.name];
 
       if (value instanceof Date) {
-        values.push(value);
+        // Emit a readable timestamp string (see formatDateTime for why not a Date).
+        values.push(formatDateTime(value));
       } else if (value === undefined) {
         values.push(null);
       } else {

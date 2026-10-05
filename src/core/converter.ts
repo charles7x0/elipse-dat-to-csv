@@ -159,6 +159,29 @@ export interface MergeResult {
   error?: string;
 }
 
+/** Phase of a merge operation, reported to the progress callback. */
+export type MergePhase = 'reading' | 'writing';
+
+/**
+ * Progress callback for mergeFiles. Fired after each input file is read during
+ * the 'reading' phase, and periodically during the 'writing' phase so the UI
+ * can show live progress across what is otherwise one long buffered operation.
+ */
+export interface MergeProgress {
+  phase: MergePhase;
+  /** Index of the file just read (reading phase); undefined during writing. */
+  fileIndex?: number;
+  /** Basename of the file just read (reading phase); undefined during writing. */
+  fileName?: string;
+  totalFiles: number;
+  /** Rows accumulated (reading) or written so far (writing). */
+  rowsProcessed: number;
+  /** Total rows to write (writing phase only). */
+  totalRows?: number;
+}
+
+export type MergeProgressCallback = (progress: MergeProgress) => void;
+
 /**
  * Merges multiple .dat files into a single output file.
  *
@@ -182,6 +205,7 @@ export async function mergeFiles(
   outputPath: string,
   format: ExportFormat,
   options: ConvertOptions,
+  onProgress?: MergeProgressCallback,
 ): Promise<MergeResult> {
   const startTime = Date.now();
 
@@ -205,12 +229,21 @@ export async function mergeFiles(
       throw new Error(`No parser registered for extension: ${ext}`);
     }
 
-    // Collect all rows from every file (buffered for sorting)
+    // Collect all rows from every file (buffered for sorting). Report progress
+    // after each file so the UI can advance live during the read phase.
     const allRecords: DataRecord[] = [];
-    for (const inputPath of inputPaths) {
+    for (let i = 0; i < inputPaths.length; i++) {
+      const inputPath = inputPaths[i];
       for await (const record of parser.parseFile(inputPath)) {
         allRecords.push(record);
       }
+      onProgress?.({
+        phase: 'reading',
+        fileIndex: i,
+        fileName: path.basename(inputPath),
+        totalFiles: inputPaths.length,
+        rowsProcessed: allRecords.length,
+      });
     }
 
     // Sort ascending by the DateTime column, if one exists
@@ -229,6 +262,10 @@ export async function mergeFiles(
     const exporter = options.exporterRegistry.get(format);
     await exporter.initialize(outputPath, mergedColumns);
 
+    const totalRows = allRecords.length;
+    // Emit a write-progress update roughly every 1% (min every 500 rows) to keep
+    // the UI live without flooding it on large merges.
+    const writeStep = Math.max(500, Math.floor(totalRows / 100));
     let rowCount = 0;
     try {
       for (const record of allRecords) {
@@ -238,6 +275,14 @@ export async function mergeFiles(
           wrapFsError(writeErr, outputPath);
         }
         rowCount++;
+        if (onProgress && rowCount % writeStep === 0) {
+          onProgress({
+            phase: 'writing',
+            totalFiles: inputPaths.length,
+            rowsProcessed: rowCount,
+            totalRows,
+          });
+        }
       }
     } finally {
       try {

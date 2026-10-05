@@ -69,10 +69,11 @@ describe('ExcelExporter', () => {
     await wb.xlsx.readFile(outputPath);
     const ws = wb.getWorksheet('Data')!;
 
-    // Row 1 is header, row 2 is first data row
+    // Row 1 is header, row 2 is first data row.
+    // DateTime cells are written as readable strings (see ExcelExporter), not
+    // native Excel dates, so the full timestamp (incl. time) is always visible.
     const row2 = ws.getRow(2);
-    expect(row2.getCell(1).value).toBeInstanceOf(Date);
-    expect((row2.getCell(1).value as Date).toISOString()).toBe('2024-01-15T10:30:00.000Z');
+    expect(row2.getCell(1).value).toBe('2024-01-15 10:30:00');
     expect(row2.getCell(2).value).toBe(3.14);
     expect(row2.getCell(3).value).toBe('sensor_a');
     expect(row2.getCell(4).value).toBe(42);
@@ -107,5 +108,50 @@ describe('ExcelExporter', () => {
     await expect(exporter.writeRecord({ A: 1 })).rejects.toThrow(
       'ExcelExporter not initialized'
     );
+  });
+
+  it('writes DateTime cells as full readable timestamp strings', async () => {
+    const outputPath = join(testDir, 'datefmt.xlsx');
+    const columns: ColumnHeader[] = [
+      { name: 'DateTime', type: ColumnType.DateTime, size: 10 },
+      { name: 'Value', type: ColumnType.Float, size: 4 },
+    ];
+
+    await exporter.initialize(outputPath, columns);
+    await exporter.writeRecord({
+      DateTime: new Date('2026-09-01T13:34:22.000Z'),
+      Value: 1.5,
+    });
+    await exporter.finalize();
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(outputPath);
+    const ws = wb.getWorksheet('Data')!;
+    const dateCell = ws.getRow(2).getCell(1);
+
+    // Written as a readable string so the full timestamp (date AND time) is
+    // always visible — the exceljs streaming writer mangles native Date cells
+    // to a locale-ambiguous 'mm-dd-yy' that hides the time.
+    expect(dateCell.value).toBe('2026-09-01 13:34:22');
+  });
+
+  it('leaves a blank DateTime cell empty (union merge)', async () => {
+    const outputPath = join(testDir, 'blankdate.xlsx');
+    const columns: ColumnHeader[] = [
+      { name: 'DateTime', type: ColumnType.DateTime, size: 10 },
+      { name: 'Value', type: ColumnType.Word, size: 2 },
+    ];
+
+    await exporter.initialize(outputPath, columns);
+    // A record missing the DateTime column (as happens for union rows)
+    await exporter.writeRecord({ Value: 7 });
+    await exporter.finalize();
+
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.readFile(outputPath);
+    const ws = wb.getWorksheet('Data')!;
+    const dateCell = ws.getRow(2).getCell(1);
+
+    expect(dateCell.value).toBeNull();
   });
 });

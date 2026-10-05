@@ -263,6 +263,7 @@ describe('ConversionManager', () => {
           parserRegistry: expect.any(Object),
           exporterRegistry: expect.any(Object),
         }),
+        expect.any(Function), // progress callback
       );
     });
 
@@ -277,6 +278,7 @@ describe('ConversionManager', () => {
         path.join('/tmp/output', 'my_report.csv'),
         'csv',
         expect.any(Object),
+        expect.any(Function), // progress callback
       );
     });
 
